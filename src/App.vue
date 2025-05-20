@@ -16,8 +16,8 @@ onMounted(() => {
     error.value = 'Canvas not found';
     return;
   }
-  canvas.width = 1200
-  canvas.height = 1200
+  canvas.width = 800
+  canvas.height = 780
   // canvas.style.background = '#f0a0a0'
 
   try {

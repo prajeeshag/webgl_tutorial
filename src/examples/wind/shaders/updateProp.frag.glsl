@@ -1,5 +1,7 @@
 precision mediump float;
 
+uniform float u_drop_rate;
+uniform float u_time_fac;
 uniform vec2 u_wind_res;
 uniform vec2 u_wind_max;
 uniform vec2 u_wind_min;
@@ -9,26 +11,36 @@ uniform sampler2D u_particles;
 
 varying vec2 v_tex_pos;
 
-vec2 lookup_wind(const vec2 uv) {
+// wind speed lookup; use manual bilinear filtering based on 4 adjacent pixels for smooth interpolation
+vec2 lookup_wind(const vec2 uv, const sampler2D wind, const vec2 wind_res, const float time_fac) {
     // return texture2D(u_wind, uv).rg; // lower-res hardware filtering
     vec2 px = 1.0 / u_wind_res;
     vec2 vc = (floor(uv * u_wind_res)) * px;
     vec2 f = fract(uv * u_wind_res);
+
     vec2 tl = texture2D(u_wind, vc).rg;
     vec2 tr = texture2D(u_wind, vc + vec2(px.x, 0)).rg;
     vec2 bl = texture2D(u_wind, vc + vec2(0, px.y)).rg;
     vec2 br = texture2D(u_wind, vc + px).rg;
-    return mix(mix(tl, tr, f.x), mix(bl, br, f.x), f.y);
+
+    vec2 tl1 = texture2D(u_wind, vc).ba;
+    vec2 tr1 = texture2D(u_wind, vc + vec2(px.x, 0)).ba;
+    vec2 bl1 = texture2D(u_wind, vc + vec2(0, px.y)).ba;
+    vec2 br1 = texture2D(u_wind, vc + px).ba;
+
+    vec2 wind0 = mix(mix(tl, tr, f.x), mix(bl, br, f.x), f.y);
+    vec2 wind1 = mix(mix(tl1, tr1, f.x), mix(bl1, br1, f.x), f.y);
+    return mix(wind0, wind1, u_time_fac);
 }
 
 void main() {
     vec4 color = texture2D(u_particles, v_tex_pos);
     vec2 pos = vec2(color.r / 255.0 + color.b, color.g / 255.0 + color.a); // decode particle position from pixel RGBA
-    vec2 velocity = mix(u_wind_min, u_wind_max, lookup_wind(pos));
+    vec2 velocity = mix(u_wind_min, u_wind_max, lookup_wind(pos, u_wind, u_wind_res, u_time_fac));
     // float speed_age = step(length(velocity), 0.5);
     float speed_age = 1. / max(length(velocity), 0.000001);
     vec4 color1 = texture2D(u_particle_props, v_tex_pos);
-    float age = (color1.r + color1.g / 255.0) + 0.0001 + (0.01 * speed_age);
+    float age = (color1.r + color1.g / 255.0) + u_drop_rate + (0.01 * speed_age);
     age = age * step(0.0, 1.0 - age);
 
     // encode the new particle position back into RGBA
