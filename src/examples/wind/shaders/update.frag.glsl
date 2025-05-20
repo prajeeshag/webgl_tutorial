@@ -1,6 +1,7 @@
 precision highp float;
 
 uniform sampler2D u_particles;
+uniform sampler2D u_particle_props;
 uniform sampler2D u_wind;
 uniform vec2 u_wind_res;
 uniform vec2 u_wind_min;
@@ -35,7 +36,8 @@ vec2 lookup_wind(const vec2 uv) {
 void main() {
     vec4 color = texture2D(u_particles, v_tex_pos);
     vec2 pos = vec2(color.r / 255.0 + color.b, color.g / 255.0 + color.a); // decode particle position from pixel RGBA
-
+    color = texture2D(u_particle_props, v_tex_pos);
+    float age = color.r + color.g / 255.0;
     vec2 velocity = mix(u_wind_min, u_wind_max, lookup_wind(pos));
     float speed_t = length(velocity) / length(u_wind_max);
 
@@ -52,9 +54,12 @@ void main() {
 
     // drop rate is a chance a particle will restart at random position, to avoid degeneration
     float drop_rate = u_drop_rate + speed_t * u_drop_rate_bump;
-    float drop = step(1.0 - drop_rate, rand(seed));
+    // float drop = step(1.0 - drop_rate, rand(seed));
+    // float drop = step(1.0 - drop_rate, 0.01);
+    float drop = step(0.0, -age);
 
     vec2 random_pos = vec2(rand(seed + 1.3), rand(seed + 2.1));
+
     pos = mix(pos, random_pos, drop);
 
     // encode the new particle position back into RGBA

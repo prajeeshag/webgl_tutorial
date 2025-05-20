@@ -1,8 +1,31 @@
 
 export default class glUtil {
     private _gl: WebGLRenderingContext;
+    private _texUnitMap: Map<WebGLUniformLocation, number>;
+    private texNextUnit: number;
+
+
     constructor(gl: WebGLRenderingContext) {
         this._gl = gl;
+        this._texUnitMap = new Map();
+        this.texNextUnit = 0;
+
+    }
+
+    bindTexture(location: WebGLUniformLocation, texture: WebGLTexture): void {
+        const gl = this._gl;
+
+        let unit: number;
+        if (this._texUnitMap.has(location)) {
+            unit = this._texUnitMap.get(location)!;
+        } else {
+            unit = this.texNextUnit++;
+            this._texUnitMap.set(location, unit);
+        }
+
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.uniform1i(location, unit);
     }
 
     private _createShader(type: number, source: string) {
@@ -73,11 +96,6 @@ export default class glUtil {
         }
         this._gl.bindTexture(this._gl.TEXTURE_2D, null);
         return texture;
-    }
-
-    bindTexture(texture: WebGLTexture, unit: number) {
-        this._gl.activeTexture(this._gl.TEXTURE0 + unit);
-        this._gl.bindTexture(this._gl.TEXTURE_2D, texture);
     }
 
     createBuffer(data: Float32Array | Uint16Array): WebGLBuffer {

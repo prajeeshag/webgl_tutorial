@@ -27,9 +27,10 @@ export default class Wind {
         const uwind = uArr.data instanceof Float32Array ? uArr.data : new Float32Array(uArr.data as ArrayLike<number>);
         const vwind = vArr.data instanceof Float32Array ? vArr.data : new Float32Array(vArr.data as ArrayLike<number>);
 
-
+        // const wind = new Float32Array(uwind.length).fill(10)
 
         const windData = new WindData(flipY(uwind, width, height), flipY(vwind, width, height), width, height);
+        // const windData = new WindData(wind, wind, width, height);
         const windGl = new WindGL(this._gl, windData,);
         this._gl.clearColor(0.0, 0.0, 0.0, 1.0);
         this._gl.clear(this._gl.COLOR_BUFFER_BIT | this._gl.DEPTH_BUFFER_BIT);
