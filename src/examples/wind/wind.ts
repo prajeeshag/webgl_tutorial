@@ -1,4 +1,3 @@
-import { isNoSubstitutionTemplateLiteral } from "typescript";
 import WindGL, { WindData } from "./windgl";
 import { open, FetchStore, get } from "zarrita";
 

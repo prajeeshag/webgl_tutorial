@@ -22,11 +22,8 @@ void main() {
     // color ramp is encoded in a 16x16 texture
     vec2 ramp_pos = vec2(fract(16.0 * speed_t), floor(16.0 * speed_t) / 16.0);
 
-    // float dist = distance(gl_PointCoord, vec2(0.5));
-    // if(dist > 0.5) {
-    //     discard; // outside the circle → make it transparent
-    // }
     vec4 color = texture2D(u_color_ramp, ramp_pos);
-    float alpha = plateauRamp(v_particle_age);
-    gl_FragColor = vec4(color.rgb, alpha * 0.8);
+    // float alpha = plateauRamp(v_particle_age);
+    //gl_FragColor = vec4(color.rgb, 0.9);
+    gl_FragColor = vec4(0.95, 0.95, 0.95, 0.25);
 }

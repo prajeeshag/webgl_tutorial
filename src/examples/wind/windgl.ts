@@ -11,21 +11,21 @@ import screenFrag from './shaders/screen.frag.glsl?raw';
 import updateFrag from './shaders/update.frag.glsl?raw';
 import updatePropFrag from './shaders/updateProp.frag.glsl?raw'
 
-const defaultRampColors = {
-    0.0: '#3288bd',
-    0.1: '#66c2a5',
-    0.2: '#abdda4',
-    0.3: '#e6f598',
-    0.4: '#fee08b',
-    0.5: '#fdae61',
-    0.6: '#f46d43',
-    1.0: '#d53e4f'
-};
-
 // const defaultRampColors = {
-//     0.0: '#eeeeee',
-//     1.0: '#eeeeee',
+//     0.0: '#3288bd',
+//     0.1: '#66c2a5',
+//     0.2: '#abdda4',
+//     0.3: '#e6f598',
+//     0.4: '#fee08b',
+//     0.5: '#fdae61',
+//     0.6: '#f46d43',
+//     1.0: '#d53e4f'
 // };
+
+const defaultRampColors = {
+    0.0: '#eeeeee',
+    1.0: '#eeeeee',
+};
 
 function getMinMax(arr: ArrayLike<number>): [number, number] {
     let min = Infinity;
@@ -98,10 +98,10 @@ export default class WindGL {
     private _windData: WindData;
     private _util: Util;
 
-    constructor(gl: WebGLRenderingContext, windData: WindData, numParticles: number = 50000) {
+    constructor(gl: WebGLRenderingContext, windData: WindData, numParticles: number = 10000) {
         this.gl = gl;
-        this.fadeOpacity = 0.999; // how fast the particle trails fade on each frame
-        this.speedFactor = 0.7; // how fast the particles move
+        this.fadeOpacity = 0.99; // how fast the particle trails fade on each frame
+        this.speedFactor = 0.8; // how fast the particles move
         this.dropRate = 0.005; // how often the particles move to a random place
         this.dropRateBump = 0.02; // drop rate increase relative to individual particle speed
 
@@ -160,8 +160,10 @@ export default class WindGL {
         gl.disable(gl.DEPTH_TEST);
         gl.disable(gl.STENCIL_TEST);
         this._drawScreen();
-        this._updateParticles();
         this._updateParticleProp();
+        this._updateParticles();
+        this._particlePosTexture.reverse()
+        this._particlePropTexture.reverse()
     }
 
     private _drawScreen() {
@@ -237,7 +239,6 @@ export default class WindGL {
         gl.uniform1f(program.u_drop_rate_bump, this.dropRateBump);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-        this._particlePosTexture.reverse()
     }
 
     private _updateParticleProp() {
@@ -250,10 +251,16 @@ export default class WindGL {
 
         this._util.bindAttribute(this._quadBuffer, program.a_pos, 2);
 
+        this._util.bindTexture(program.u_wind, this._windTexture)
+        this._util.bindTexture(program.u_particles, this._particlePosTexture[0])
         this._util.bindTexture(program.u_particle_props, this._particlePropTexture[0])
+        gl.uniform2f(program.u_wind_res, this._windData.width, this._windData.height);
+        gl.uniform2f(program.u_wind_min, this._windData.uMin, this._windData.vMin);
+        gl.uniform2f(program.u_wind_max, this._windData.uMax, this._windData.vMax);
+        gl.uniform1f(program.u_wind_speed_min, this._windData.uMin);
+        gl.uniform1f(program.u_wind_speed_max, this._windData.uMax);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-        this._particlePropTexture.reverse()
     }
 }
 
