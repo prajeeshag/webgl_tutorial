@@ -15,39 +15,31 @@ export default class Wind {
 
     async run() {
         const BASE_URL = 'http://localhost:8000/';
-        const _loadZarrArray = (url: string) => {
+        const _openZarr = (url: string) => {
             return open.v3(new FetchStore(BASE_URL + url), { kind: "array" })
-                .then(store => get(store));
         };
-        const vArr = await _loadZarrArray('V10.zarr/V10')
-        const uArr = await _loadZarrArray('U10.zarr/U10')
-        const width = uArr.shape[2];
-        const height = uArr.shape[1];
-        const ntime = uArr.shape[0];
+        var store = await _openZarr('V10.zarr/V10')
+        const vAttr = store.attrs
+        const vArr = await get(store)
 
-        const uwind = new Float32Array(width * height)
-        const uwind1 = new Float32Array(width * height)
-        const vwind = new Float32Array(width * height)
-        const vwind1 = new Float32Array(width * height)
+        var store = await _openZarr('U10.zarr/U10')
+        const uAttr = store.attrs
+        const uArr = await get(store)
+        console.log(uArr);
 
-        const uData = uArr.data as Float32Array;
-        const vData = vArr.data as Float32Array;
-        for (let n = 0; n < width * height; n++) {
-            uwind[n] = uData[n];
-            vwind[n] = vData[n];
-            uwind1[n] = uData[width * height + n];
-            vwind1[n] = vData[width * height + n];
-        }
-
+        const uData = uArr.data as Uint8Array;
+        const vData = vArr.data as Uint8Array;
         const windData = new WindData(
-            flipY(uwind, width, height),
-            flipY(vwind, width, height),
-            flipY(uwind1, width, height),
-            flipY(vwind1, width, height),
-            width, height
+            uData,
+            vData,
+            [uAttr.valid_min as number, uAttr.valid_max as number],
+            [vAttr.valid_min as number, vAttr.valid_max as number],
+            uArr.shape[2],
+            uArr.shape[1],
+            uArr.shape[0],
         );
         // const windData = new WindData(wind, wind, width, height);
-        const windGl = new WindGL(this._gl, windData,);
+        const windGl = new WindGL(this._gl, windData);
         this._gl.clearColor(0.0, 0.0, 0.0, 1.0);
         this._gl.clear(this._gl.COLOR_BUFFER_BIT | this._gl.DEPTH_BUFFER_BIT);
         var prev_time = performance.now();

@@ -28,78 +28,6 @@ const defaultRampColors = {
     1.0: '#ffffff',
 };
 
-function getMinMax(arr: ArrayLike<number>): [number, number] {
-    var min = Infinity;
-    var max = -Infinity;
-    for (let i = 0; i < arr.length; i++) {
-        const val = arr[i];
-        if (val < min) min = val;
-        if (val > max) max = val;
-    }
-    return [min, max];
-}
-
-export class WindData {
-    wind: Uint8Array;
-    width: number;
-    height: number;
-    uMin: number;
-    vMin: number;
-    uMax: number;
-    vMax: number;
-    spdMin: number;
-    spdMax: number;
-    constructor(
-        uwind: Float32Array,
-        vwind: Float32Array,
-        uwind1: Float32Array,
-        vwind1: Float32Array,
-        width: number,
-        height: number
-    ) {
-        // some sanity checks
-        if (uwind.length !== vwind.length) {
-            throw new Error('U and V wind arrays must be the same length');
-        }
-        if (uwind.length % width !== 0) {
-            throw new Error('Wind arrays length must be a multiple of width');
-        }
-        if (uwind.length / width !== height) {
-            throw new Error('Wind arrays length must be equal to width * height');
-        }
-        this.width = width;
-        this.height = height;
-        const [uMin, uMax] = getMinMax(uwind);
-        const [vMin, vMax] = getMinMax(vwind);
-        const [uMin1, uMax1] = getMinMax(uwind1);
-        const [vMin1, vMax1] = getMinMax(vwind1);
-        this.uMin = Math.min(uMin, uMin1);
-        this.uMax = Math.max(uMax, uMax1);
-        this.vMin = Math.min(vMin, vMin1);
-        this.vMax = Math.max(vMax, vMax1);
-        this.wind = new Uint8Array(uwind.length + vwind.length * 4);
-        var spdMin = 9999999.
-        var spdMax = 0.
-        for (let i = 0; i < uwind.length; i++) {
-            // normalize the wind values to 0-255 range
-            const u = Math.floor(((uwind[i] - this.uMin) / (this.uMax - this.uMin)) * 255);
-            const v = Math.floor(((vwind[i] - this.vMin) / (this.vMax - this.vMin)) * 255);
-            const u1 = Math.floor(((uwind1[i] - this.uMin) / (this.uMax - this.uMin)) * 255);
-            const v1 = Math.floor(((vwind1[i] - this.vMin) / (this.vMax - this.vMin)) * 255);
-            const spd = Math.sqrt(u * u + v * v)
-            const spd1 = Math.sqrt(u1 * u1 + v1 * v1)
-            spdMin = Math.min(spdMin, spd, spd1)
-            spdMax = Math.max(spdMax, spd, spd1)
-            this.wind[i * 4] = u;
-            this.wind[i * 4 + 1] = v;
-            this.wind[i * 4 + 2] = u1;
-            this.wind[i * 4 + 3] = v1;
-        }
-        this.spdMin = spdMin
-        this.spdMax = spdMax
-    }
-}
-
 export default class WindGL {
     gl: WebGLRenderingContext;
     fadeOpacity: number;
@@ -115,13 +43,14 @@ export default class WindGL {
     private _particlePosTexture: [WebGLTexture, WebGLTexture]
     private _particlePropTexture: [WebGLTexture, WebGLTexture]
     private _particleIndexBuffer: any;
-    private _windTexture: WebGLTexture;
+    private _windTextures: WindTexture
     private _windData: WindData;
     private _util: Util;
     private _animationSpeed: number;
     private _time_factor: number = 0.0;
+    private _tex_index: number = 0;
 
-    constructor(gl: WebGLRenderingContext, windData: WindData, numParticles: number = 20000, animationSpeed: number = 30) {
+    constructor(gl: WebGLRenderingContext, windData: WindData, numParticles: number = 20000, animationSpeed: number = 10) {
         this.gl = gl;
         this.fadeOpacity = 0.99; // how fast the particle trails fade on each frame
         this.speedFactor = 0.9; // how fast the particles move
@@ -140,8 +69,7 @@ export default class WindGL {
         this._colorRampTexture = this._util.createTexture(this.gl.LINEAR, getColorRamp(defaultRampColors), 16, 16);
 
         this._windData = windData;
-        this._windTexture = this._util.createTexture(this.gl.LINEAR, windData.wind, windData.width, windData.height);
-
+        this._windTextures = new WindTexture(windData, gl);
 
         // we create a square texture where each pixel will hold a particle position encoded as RGBA
         const particleRes = this._particleStateResolution = Math.ceil(Math.sqrt(numParticles));
@@ -183,7 +111,12 @@ export default class WindGL {
         this._time_factor += dt / this._animationSpeed
         if (this._time_factor > 1.0) {
             this._time_factor = 0.0;
+            this._tex_index += 1;
         }
+        if (this._tex_index > this._windTextures.ntex - 1) {
+            this._tex_index = 0;
+        }
+        // console.log(this._tex_index, this._time_factor);
         gl.disable(gl.DEPTH_TEST);
         gl.disable(gl.STENCIL_TEST);
         this._drawScreen();
@@ -216,11 +149,11 @@ export default class WindGL {
         const gl = this.gl;
         const program = this._programs.screen;
         gl.useProgram(program.program);
-
-        gl.uniform1f(program.u_wind_spd_min, this._windData.spdMin);
-        gl.uniform1f(program.u_wind_spd_max, this._windData.spdMax);
+        const windTex = this._windTextures.textures[this._tex_index];
+        gl.uniform1f(program.u_wind_spd_min, this._windTextures.spdMin);
+        gl.uniform1f(program.u_wind_spd_max, this._windTextures.spdMax);
         gl.uniform2f(program.u_wind_res, this._windData.width, this._windData.height);
-        this._util.bindTexture(program.u_wind, this._windTexture)
+        this._util.bindTexture(program.u_wind, windTex)
         this._util.bindAttribute(this._quadBuffer, program.a_pos, 2);
         this._util.bindTexture(program.u_screen, texture)
         gl.uniform1f(program.u_opacity, opacity);
@@ -232,10 +165,10 @@ export default class WindGL {
         const gl = this.gl;
         const program = this._programs.draw;
         gl.useProgram(program.program);
-
+        const windTex = this._windTextures.textures[this._tex_index];
         this._util.bindAttribute(this._particleIndexBuffer, program.a_index, 1);
 
-        this._util.bindTexture(program.u_wind, this._windTexture)
+        this._util.bindTexture(program.u_wind, windTex)
         this._util.bindTexture(program.u_particles, this._particlePosTexture[0])
         this._util.bindTexture(program.u_particle_props, this._particlePropTexture[0])
         this._util.bindTexture(program.u_color_ramp, this._colorRampTexture)
@@ -254,11 +187,11 @@ export default class WindGL {
         gl.viewport(0, 0, this._particleStateResolution, this._particleStateResolution);
 
         const program = this._programs.update;
+        const windTex = this._windTextures.textures[this._tex_index];
         gl.useProgram(program.program);
-
         this._util.bindAttribute(this._quadBuffer, program.a_pos, 2);
 
-        this._util.bindTexture(program.u_wind, this._windTexture)
+        this._util.bindTexture(program.u_wind, windTex)
         this._util.bindTexture(program.u_particles, this._particlePosTexture[0])
         this._util.bindTexture(program.u_particle_props, this._particlePropTexture[0])
 
@@ -278,11 +211,12 @@ export default class WindGL {
         gl.viewport(0, 0, this._particleStateResolution, this._particleStateResolution);
 
         const program = this._programs.updateProp;
+        const windTex = this._windTextures.textures[this._tex_index];
         gl.useProgram(program.program);
 
         this._util.bindAttribute(this._quadBuffer, program.a_pos, 2);
 
-        this._util.bindTexture(program.u_wind, this._windTexture)
+        this._util.bindTexture(program.u_wind, windTex)
         this._util.bindTexture(program.u_particles, this._particlePosTexture[0])
         this._util.bindTexture(program.u_particle_props, this._particlePropTexture[0])
         gl.uniform1f(program.u_time_fac, this._time_factor);
@@ -317,3 +251,128 @@ function getColorRamp(colors: { [x: string]: string; }) {
 
     return new Uint8Array(ctx.getImageData(0, 0, 256, 1).data);
 }
+
+export class WindData {
+    uwind: Uint8Array;
+    vwind: Uint8Array;
+    width: number;
+    height: number;
+    uMin: number;
+    vMin: number;
+    uMax: number;
+    vMax: number;
+    ntime: number;
+    constructor(
+        uwind: Uint8Array,
+        vwind: Uint8Array,
+        uwindMinMax: [number, number],
+        vwindMinMax: [number, number],
+        width: number,
+        height: number,
+        ntime: number = 1
+    ) {
+        // some sanity checks
+        if (uwind.length !== vwind.length) {
+            throw new Error('U and V wind arrays must be the same length');
+        }
+        if (uwind.length !== width * height * ntime) {
+            throw new Error('Wind arrays length must be equal to width * height * ntime');
+        }
+        this.width = width;
+        this.height = height;
+        this.ntime = ntime;
+        this.uMin = uwindMinMax[0]
+        this.uMax = uwindMinMax[1]
+        this.vMin = vwindMinMax[0]
+        this.vMax = vwindMinMax[1]
+        this.uwind = uwind;
+        this.vwind = vwind;
+    }
+}
+
+class WindTexture {
+    textures: WebGLTexture[] = [];
+    uMin: number;
+    vMin: number;
+    uMax: number;
+    vMax: number;
+    height: number;
+    width: number;
+    ntex: number;
+    spdMin: number;
+    spdMax: number;
+    constructor(windData: WindData, gl: WebGLRenderingContext) {
+        const uwind = windData.uwind;
+        const vwind = windData.vwind;
+        this.width = windData.width;
+        this.height = windData.height;
+        this.uMin = windData.uMin;
+        this.uMax = windData.uMax;
+        this.vMin = windData.vMin;
+        this.vMax = windData.vMax;
+
+        this.ntex = windData.ntime - 1;
+        if (windData.ntime === 1) {
+            this.ntex = 1;
+        }
+
+        const util = new Util(gl);
+        var spdMin = Infinity;
+        var spdMax = -Infinity;
+
+        const wh = this.width * this.height;
+        if (windData.ntime === 1) {
+            const uwind1 = uwind.subarray(0, wh);
+            const vwind1 = vwind.subarray(0, wh);
+            const windArray = new Uint8Array(wh * 4);
+
+            for (let i = 0; i < wh; i++) {
+                windArray[i * 4] = uwind1[i];
+                windArray[i * 4 + 1] = vwind1[i];
+                windArray[i * 4 + 2] = uwind1[i];
+                windArray[i * 4 + 3] = vwind1[i];
+                const spd = Math.sqrt(uwind1[i] * uwind1[i] + vwind1[i] * vwind1[i]);
+                spdMin = Math.min(spdMin, spd);
+                spdMax = Math.max(spdMax, spd);
+            }
+            const texture = util.createTexture(gl.LINEAR, windArray, windData.width, windData.height);
+            this.textures.push(texture);
+        } else {
+            for (let t = 0; t < this.ntex; t++) {
+                const t1 = t
+                const t2 = t + 1;
+                const uwind1 = uwind.subarray(t1 * wh, (t1 + 1) * wh);
+                const vwind1 = vwind.subarray(t1 * wh, (t1 + 1) * wh);
+                const uwind2 = uwind.subarray(t2 * wh, (t2 + 1) * wh);
+                const vwind2 = vwind.subarray(t2 * wh, (t2 + 1) * wh);
+                const windArray = new Uint8Array(wh * 4);
+                for (let i = 0; i < wh; i++) {
+                    windArray[i * 4] = uwind1[i];
+                    windArray[i * 4 + 1] = vwind1[i];
+                    windArray[i * 4 + 2] = uwind2[i];
+                    windArray[i * 4 + 3] = vwind2[i];
+                    const spd1 = Math.sqrt(uwind1[i] * uwind1[i] + vwind1[i] * vwind1[i]);
+                    const spd2 = Math.sqrt(uwind2[i] * uwind2[i] + vwind2[i] * vwind2[i]);
+                    spdMin = Math.min(spdMin, spd1, spd2);
+                    spdMax = Math.max(spdMax, spd1, spd2);
+                }
+                const texture = util.createTexture(gl.LINEAR, windArray, windData.width, windData.height);
+                this.textures.push(texture);
+            }
+        }
+        this.spdMin = spdMin;
+        this.spdMax = spdMax;
+    }
+}
+
+function getMinMax(arr: ArrayLike<number>): [number, number] {
+    var min = Infinity;
+    var max = -Infinity;
+    for (let i = 0; i < arr.length; i++) {
+        const val = arr[i];
+        if (val < min) min = val;
+        if (val > max) max = val;
+    }
+    return [min, max];
+}
+
